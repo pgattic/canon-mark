@@ -36,7 +36,7 @@ var execFlags Flags
 func LoadMarks() Marks {
   file, err := os.ReadFile(filepath.Join(getUserHomeDir(), ".canon", "marks", "default", bookPath, chapter+".json"))
   if err != nil {
-    panic(err)
+    return Marks{}
   }
 
   // Unmarshal JSON into Config struct
