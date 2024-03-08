@@ -17,11 +17,10 @@ type Flags struct { // command-line flags
 }
 
 var verse int
-var chapter string
-var bookPath string
-var marks marksmanager.Marks
 var execFlags Flags
 var markToAdd marksmanager.Mark
+
+var marksManager marksmanager.MarksManager
 
 var vRangeStarted bool = false
 
@@ -39,17 +38,19 @@ func setVerse(verseNum int) {
 
 func setChapter(chapStr string) {
   if execFlags.adding && vRangeStarted {
-    marks.Marks = append(marks.Marks, markToAdd)
-    marksmanager.StoreMarks(marks, bookPath, chapter)
+    marksManager.Add("default", markToAdd)
+    marksManager.Store("default")
     markToAdd = marksmanager.Mark{}
     vRangeStarted = false
   }
-  chapter = chapStr
+  marksManager.Init()
+  marksManager.Chapter = chapStr
+  marksManager.Load("default")
 }
 
 func setBookPath(bookStr string) {
   setChapter("")
-  bookPath = bookStr
+  marksManager.BookPath = bookStr
 }
 
 func resolveBgColor(color string) string { // Get ANSI code for background color
@@ -109,15 +110,15 @@ func printVerse(content string) {
       ul = markToAdd.Ul
   }
 
-  for i := 0; i < len(marks.Marks); i++ {
-    if (marks.Marks[i].Ref[0] <= verse && marks.Marks[i].Ref[1] >= verse) {
-      if marks.Marks[i].Bg != "" {
-        bgCol = marks.Marks[i].Bg
+  for i := 0; i < len(marksManager.Profiles["default"].Marks); i++ {
+    if (marksManager.Profiles["default"].Marks[i].Ref[0] <= verse && marksManager.Profiles["default"].Marks[i].Ref[1] >= verse) {
+      if marksManager.Profiles["default"].Marks[i].Bg != "" {
+        bgCol = marksManager.Profiles["default"].Marks[i].Bg
       }
-      if marks.Marks[i].Fg != "" {
-        fgCol = marks.Marks[i].Fg
+      if marksManager.Profiles["default"].Marks[i].Fg != "" {
+        fgCol = marksManager.Profiles["default"].Marks[i].Fg
       }
-      ul = marks.Marks[i].Ul
+      ul = marksManager.Profiles["default"].Marks[i].Ul
     }
   }
   if  execFlags.VerseNumbers {
@@ -148,7 +149,7 @@ func handleInput(text string) {
     printVerse(text[len(verseParts[0])+4:])
   } else if text[:2] == "@@" {
     setChapter(text[2:])
-    marks = marksmanager.LoadMarks(bookPath, chapter)
+    marksManager.Load("default")
   } else if text[0] == '@' {
     setBookPath(text[1:])
   }
@@ -177,6 +178,9 @@ func main() {
           case "--numbered":
             execFlags.VerseNumbers = true
           }
+//          if len(args[i]) > 10 && args[i][:11] == "--profiles=" {
+//            profiles = strings.Split(args[i][11:], ",")
+//          }
           if len(args[i]) > 5 && args[i][:5] == "--bg=" {
             markToAdd.Bg = args[i][5:]
           } else if len(args[i]) > 5 && args[i][:5] == "--fg=" {
@@ -201,6 +205,7 @@ func main() {
       }
     }
   }
+  marksManager.Profiles = make(map[string]marksmanager.Marks)
 
   // Create a scanner to read from standard input
   scanner := bufio.NewScanner(os.Stdin)
@@ -217,10 +222,8 @@ func main() {
   }
 
   if execFlags.adding && vRangeStarted {
-    marks.Marks = append(marks.Marks, markToAdd)
-    marksmanager.StoreMarks(marks, bookPath, chapter)
-    markToAdd = marksmanager.Mark{}
-    vRangeStarted = false
+    marksManager.Add("default", markToAdd)
+    marksManager.Store("default")
   }
 }
 

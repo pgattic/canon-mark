@@ -26,6 +26,14 @@ A good example would be from [Canon](https://github.com/pgattic/canon)'s output 
 
 if this were to be piped into `marks`, the text would be printed out with the appropriate highlights applied, such as `canon "John 3:16-17 -v | marks -n"`.
 
+If being used frequently with Canon, a few bash functions may be useful to simplify the process of displaying annotated text, such as:
+
+```
+can() { canon "$@" -v | marks -n; }
+
+canl() { can "$@" | less --wordwrap -R; }
+```
+
 ### Storing annotations
 
 While marks is reading input text, it keeps track of which paragraphs it is given, and can be told to store that range in an annotation in the user's directory.
@@ -60,5 +68,10 @@ In the process of developing this software, I used:
 ## Roadmap
 
 - [ ] Highlight words within paragraphs
-- [x] Support adding a new highlight (nobody wants to do that manually!)
+- [x] Support adding a new annotation from the command line (nobody wants to do that manually!)
+- [ ] Support multiple profiles
+- [ ] Support filtering by tags
+- [ ] Hold onto the date that each annotation was added
+- [ ] List all annotations that overlap the input range
+- [ ] Delete annotations
 
