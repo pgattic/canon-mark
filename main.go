@@ -2,100 +2,142 @@ package main
 
 import (
   "bufio"
-  "encoding/json"
   "fmt"
   "os"
-  "path/filepath"
   "strconv"
   "strings"
+  "github.com/pgattic/marks/marksmanager"
 )
 
 type Flags struct { // command-line flags
   Paragraph bool // -p
   Verbose bool // -v
   VerseNumbers bool // -n
-}
-
-// Highlight struct to match the JSON structure
-type Highlight struct {
-  Ref []int `json:"ref"`
-  Color string `json:"color"`
-}
-
-// Marks struct to hold an array of Highlight structs
-type Marks struct {
-  Highlights []Highlight `json:"highlights"`
+  adding bool
 }
 
 var verse int
 var chapter string
 var bookPath string
-var marks Marks
+var marks marksmanager.Marks
 var execFlags Flags
+var markToAdd marksmanager.Mark
 
-func LoadMarks() Marks {
-  file, err := os.ReadFile(filepath.Join(getUserHomeDir(), ".canon", "marks", "default", bookPath, chapter+".json"))
-  if err != nil {
-    return Marks{}
-  }
-
-  // Unmarshal JSON into Config struct
-  var marks Marks
-  err_1 := json.Unmarshal(file, &marks)
-  if err_1 != nil {
-    panic(err_1)
-  }
-  return marks
-}
+var vRangeStarted bool = false
 
 func setVerse(verseNum int) {
   verse = verseNum
+  if execFlags.adding {
+    if !vRangeStarted {
+      vRangeStarted = true
+      markToAdd.Ref = []int{verse, verse}
+    } else {
+      markToAdd.Ref[1] = verse
+    }
+  }
 }
 
 func setChapter(chapStr string) {
+  if execFlags.adding && vRangeStarted {
+    marks.Marks = append(marks.Marks, markToAdd)
+    marksmanager.StoreMarks(marks, bookPath, chapter)
+    markToAdd = marksmanager.Mark{}
+    vRangeStarted = false
+  }
   chapter = chapStr
-  setVerse(0)
 }
 
 func setBookPath(bookStr string) {
-  bookPath = bookStr
   setChapter("")
+  bookPath = bookStr
+}
+
+func resolveBgColor(color string) string { // Get ANSI code for background color
+  switch color {
+  case "red":
+    return "41"
+  case "green":
+    return "42"
+  case "yellow":
+    return "43"
+  case "blue":
+    return "44"
+  case "magenta":
+    return "45"
+  case "cyan":
+    return "46"
+  case "white":
+    return "47"
+  default:
+    return ""
+  }
+}
+
+func resolveFgColor(color string) string { // Get ANSI code for foreground color
+  switch color {
+  case "red":
+    return "91"
+  case "green":
+    return "92"
+  case "yellow":
+    return "93"
+  case "blue":
+    return "94"
+  case "magenta":
+    return "95"
+  case "cyan":
+    return "96"
+  case "white":
+    return "97"
+  default:
+    return ""
+  }
 }
 
 func printVerse(content string) {
+  var fgCol string
+  var bgCol string
+  var ul bool
+  
+  if execFlags.adding {
+      if markToAdd.Bg != "" {
+        bgCol = markToAdd.Bg
+      }
+      if markToAdd.Fg != "" {
+        fgCol = markToAdd.Fg
+      }
+      ul = markToAdd.Ul
+  }
 
-  var appliedMarks []Highlight
-  for i := 0; i < len(marks.Highlights); i++ {
-    if (marks.Highlights[i].Ref[0] <= verse && marks.Highlights[i].Ref[1] >= verse) {
-      appliedMarks = append(appliedMarks, marks.Highlights[i])
+  for i := 0; i < len(marks.Marks); i++ {
+    if (marks.Marks[i].Ref[0] <= verse && marks.Marks[i].Ref[1] >= verse) {
+      if marks.Marks[i].Bg != "" {
+        bgCol = marks.Marks[i].Bg
+      }
+      if marks.Marks[i].Fg != "" {
+        fgCol = marks.Marks[i].Fg
+      }
+      ul = marks.Marks[i].Ul
     }
   }
   if  execFlags.VerseNumbers {
-    fmt.Print(verse, " ")
+    fmt.Print(" \033[1m", verse, "\033[0m ")
   }
-  if len(appliedMarks) == 0 {
-    fmt.Println(content)
-    return
+  ANSICode := "\033["
+  if fgCol != "" {
+    ANSICode += ";" + resolveFgColor(fgCol)
   }
-  switch appliedMarks[len(appliedMarks)-1].Color {
-  case "red":
-    fmt.Println("\033[31m" + content + "\033[0m")
-  case "green":
-    fmt.Println("\033[32m" + content + "\033[0m")
-  case "yellow":
-    fmt.Println("\033[33m" + content + "\033[0m")
-  case "blue":
-    fmt.Println("\033[34m" + content + "\033[0m")
-  case "magenta":
-    fmt.Println("\033[35m" + content + "\033[0m")
-  case "cyan":
-    fmt.Println("\033[36m" + content + "\033[0m")
-  case "white":
-    fmt.Println("\033[37m" + content + "\033[0m")
-  default:
-    fmt.Println("\033[0m" + content)
+  if bgCol != "" {
+    ANSICode += ";" + resolveBgColor(bgCol)
   }
-  //verseParts := strings.Split(content, " ")
+  if ul {
+    ANSICode += ";4"
+  }
+  ANSICode += "m"
+  fmt.Println(ANSICode + content + "\033[0m")
+  if execFlags.Paragraph {
+    fmt.Println()
+  }
 }
 
 func handleInput(text string) {
@@ -106,7 +148,7 @@ func handleInput(text string) {
     printVerse(text[len(verseParts[0])+4:])
   } else if text[:2] == "@@" {
     setChapter(text[2:])
-    marks = LoadMarks()
+    marks = marksmanager.LoadMarks(bookPath, chapter)
   } else if text[0] == '@' {
     setBookPath(text[1:])
   }
@@ -115,7 +157,13 @@ func handleInput(text string) {
 func main() {
   args := os.Args
 
+  execFlags = Flags{false, false, false, false}
+
   if len(args) > 1 {
+    switch args[1] {
+    case "add":
+      execFlags.adding = true
+    }
 
   //  var refIdx int // index of the args that is the verse index (flags could be before or after the verse ref)
     for i := len(args)-1; i >= 1; i-- {
@@ -128,6 +176,13 @@ func main() {
             execFlags.Verbose = true
           case "--numbered":
             execFlags.VerseNumbers = true
+          }
+          if len(args[i]) > 5 && args[i][:5] == "--bg=" {
+            markToAdd.Bg = args[i][5:]
+          } else if len(args[i]) > 5 && args[i][:5] == "--fg=" {
+            markToAdd.Fg = args[i][5:]
+          } else if args[i] == "--ul" {
+            markToAdd.Ul = true
           }
           continue
         }
@@ -147,7 +202,6 @@ func main() {
     }
   }
 
-
   // Create a scanner to read from standard input
   scanner := bufio.NewScanner(os.Stdin)
   // Read input line by line
@@ -161,13 +215,13 @@ func main() {
     fmt.Fprintln(os.Stderr, "Error reading standard input:", err)
     os.Exit(1)
   }
+
+  if execFlags.adding && vRangeStarted {
+    marks.Marks = append(marks.Marks, markToAdd)
+    marksmanager.StoreMarks(marks, bookPath, chapter)
+    markToAdd = marksmanager.Mark{}
+    vRangeStarted = false
+  }
 }
 
-func getUserHomeDir() string {
-  if homeDir, err := os.UserHomeDir(); err == nil {
-    return homeDir
-  }
-  // Fallback option if getting user's home directory fails
-  return os.Getenv("HOME")
-}
 
