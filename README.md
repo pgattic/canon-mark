@@ -1,6 +1,8 @@
 
 # Marks - Annotation Manager
 
+[Video Preview](https://youtu.be/EaoDfP-UVpE)
+
 ## Usage
 
 Marks can received piped information through the standard input, informing it where to search for annotations.
